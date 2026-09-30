@@ -1,45 +1,316 @@
-```python
 import streamlit as st
-import math
+import pandas as pd
 
-# =========================
+# =========================================================
 # CẤU HÌNH TRANG
-# =========================
+# =========================================================
 st.set_page_config(
     page_title="Tính lãi tiền gửi tiết kiệm",
     page_icon="💰",
     layout="centered"
 )
 
-# =========================
+# =========================================================
+# CSS GIAO DIỆN
+# =========================================================
+st.markdown(
+    """
+    <style>
+    .main-title {
+        font-size: 36px;
+        font-weight: 700;
+        text-align: center;
+        margin-bottom: 10px;
+    }
+
+    .sub-title {
+        text-align: center;
+        color: #666;
+        margin-bottom: 25px;
+    }
+
+    .result-box {
+        padding: 20px;
+        border-radius: 12px;
+        background-color: #f7f9fc;
+        border: 1px solid #e1e5eb;
+        margin-bottom: 15px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# =========================================================
 # HÀM ĐỊNH DẠNG TIỀN
-# =========================
+# =========================================================
 def format_money(value):
     return f"{value:,.0f} VNĐ"
 
 
-# =========================
-# TIÊU ĐỀ
-# =========================
-st.title("💰 Tính lãi tiền gửi tiết kiệm")
+# =========================================================
+# HÀM TÍNH LÃI
+# =========================================================
+def tinh_lai(
+    tien_gui,
+    ky_han_thang,
+    lai_suat_nam,
+    loai_lai,
+    hinh_thuc_nhan_lai
+):
+    """
+    Parameters
+    ----------
+    tien_gui : float
+        Số tiền gửi ban đầu.
 
-st.write(
-    "Ứng dụng tính toán tiền lãi theo **lãi đơn** hoặc **lãi kép**, "
-    "với các hình thức nhận lãi theo tháng, theo quý hoặc cuối kỳ."
+    ky_han_thang : int
+        Kỳ hạn gửi tính theo tháng.
+
+    lai_suat_nam : float
+        Lãi suất %/năm.
+
+    loai_lai : str
+        "Lãi đơn" hoặc "Lãi kép".
+
+    hinh_thuc_nhan_lai : str
+        "Lãnh lãi theo tháng",
+        "Lãnh lãi theo quý",
+        "Lãnh lãi cuối kỳ".
+
+    Returns
+    -------
+    dict
+        Kết quả tính toán.
+    """
+
+    # Chuyển lãi suất từ % về số thập phân
+    lai_suat_nam_decimal = lai_suat_nam / 100
+
+    # -----------------------------------------------------
+    # XÁC ĐỊNH SỐ THÁNG CỦA MỘT KỲ
+    # -----------------------------------------------------
+    if hinh_thuc_nhan_lai == "Lãnh lãi theo tháng":
+        so_thang_moi_ky = 1
+
+    elif hinh_thuc_nhan_lai == "Lãnh lãi theo quý":
+        so_thang_moi_ky = 3
+
+    else:
+        so_thang_moi_ky = ky_han_thang
+
+    # -----------------------------------------------------
+    # TRƯỜNG HỢP LÃNH LÃI CUỐI KỲ
+    # -----------------------------------------------------
+    if hinh_thuc_nhan_lai == "Lãnh lãi cuối kỳ":
+
+        # -------------------------------
+        # LÃI ĐƠN
+        # -------------------------------
+        if loai_lai == "Lãi đơn":
+
+            tong_lai = (
+                tien_gui
+                * lai_suat_nam_decimal
+                * ky_han_thang
+                / 12
+            )
+
+            tong_tien = tien_gui + tong_lai
+
+            bang_chi_tiet = pd.DataFrame([
+                {
+                    "Kỳ": "Cuối kỳ",
+                    "Tiền gốc": tien_gui,
+                    "Tiền lãi": tong_lai,
+                    "Tổng gốc + lãi": tong_tien
+                }
+            ])
+
+        # -------------------------------
+        # LÃI KÉP
+        # -------------------------------
+        else:
+
+            # Ghép lãi theo tháng
+            lai_suat_thang = lai_suat_nam_decimal / 12
+
+            tong_tien = tien_gui * (
+                1 + lai_suat_thang
+            ) ** ky_han_thang
+
+            tong_lai = tong_tien - tien_gui
+
+            bang_chi_tiet = pd.DataFrame([
+                {
+                    "Kỳ": "Cuối kỳ",
+                    "Tiền gốc": tien_gui,
+                    "Tiền lãi": tong_lai,
+                    "Tổng gốc + lãi": tong_tien
+                }
+            ])
+
+        return {
+            "lai_dinh_ky": tong_lai,
+            "tong_lai": tong_lai,
+            "tong_tien": tong_tien,
+            "bang_chi_tiet": bang_chi_tiet
+        }
+
+    # =====================================================
+    # LÃI THEO THÁNG / QUÝ
+    # =====================================================
+
+    # Số kỳ đầy đủ
+    so_ky = ky_han_thang // so_thang_moi_ky
+
+    # Số tháng còn dư
+    thang_le = ky_han_thang % so_thang_moi_ky
+
+    # Lãi suất của một kỳ
+    lai_suat_ky = (
+        lai_suat_nam_decimal
+        * so_thang_moi_ky
+        / 12
+    )
+
+    # Vốn hiện tại
+    von_hien_tai = tien_gui
+
+    tong_lai = 0
+
+    chi_tiet = []
+
+    # =====================================================
+    # TÍNH TỪNG KỲ
+    # =====================================================
+    for ky in range(1, so_ky + 1):
+
+        von_dau_ky = von_hien_tai
+
+        if loai_lai == "Lãi đơn":
+
+            # Lãi đơn: luôn tính trên gốc ban đầu
+            tien_lai = tien_gui * lai_suat_ky
+
+            von_cuoi_ky = von_dau_ky
+
+        else:
+
+            # Lãi kép: lãi nhập vào vốn
+            tien_lai = von_hien_tai * lai_suat_ky
+
+            von_hien_tai = von_hien_tai + tien_lai
+
+            von_cuoi_ky = von_hien_tai
+
+        tong_lai += tien_lai
+
+        chi_tiet.append(
+            {
+                "Kỳ": ky,
+                "Thời gian": f"Đến tháng {ky * so_thang_moi_ky}",
+                "Tiền gốc đầu kỳ": von_dau_ky,
+                "Tiền lãi": tien_lai,
+                "Tiền cuối kỳ": von_cuoi_ky
+            }
+        )
+
+    # =====================================================
+    # XỬ LÝ PHẦN THÁNG LẺ
+    # =====================================================
+    if thang_le > 0:
+
+        lai_suat_thang_le = (
+            lai_suat_nam_decimal
+            * thang_le
+            / 12
+        )
+
+        von_dau_ky = von_hien_tai
+
+        if loai_lai == "Lãi đơn":
+
+            tien_lai_le = (
+                tien_gui
+                * lai_suat_thang_le
+            )
+
+            von_cuoi_ky = von_dau_ky
+
+        else:
+
+            tien_lai_le = (
+                von_hien_tai
+                * lai_suat_thang_le
+            )
+
+            von_hien_tai += tien_lai_le
+
+            von_cuoi_ky = von_hien_tai
+
+        tong_lai += tien_lai_le
+
+        chi_tiet.append(
+            {
+                "Kỳ": "Kỳ lẻ",
+                "Thời gian": f"Đến tháng {ky_han_thang}",
+                "Tiền gốc đầu kỳ": von_dau_ky,
+                "Tiền lãi": tien_lai_le,
+                "Tiền cuối kỳ": von_cuoi_ky
+            }
+        )
+
+    # =====================================================
+    # TÍNH TỔNG CUỐI CÙNG
+    # =====================================================
+    if loai_lai == "Lãi đơn":
+        tong_tien = tien_gui + tong_lai
+    else:
+        tong_tien = von_hien_tai
+
+    # Tiền lãi định kỳ
+    if len(chi_tiet) > 0:
+        lai_dinh_ky = tong_lai / len(chi_tiet)
+    else:
+        lai_dinh_ky = 0
+
+    bang_chi_tiet = pd.DataFrame(chi_tiet)
+
+    return {
+        "lai_dinh_ky": lai_dinh_ky,
+        "tong_lai": tong_lai,
+        "tong_tien": tong_tien,
+        "bang_chi_tiet": bang_chi_tiet
+    }
+
+
+# =========================================================
+# TIÊU ĐỀ
+# =========================================================
+st.markdown(
+    '<div class="main-title">💰 TÍNH LÃI TIỀN GỬI TIẾT KIỆM</div>',
+    unsafe_allow_html=True
 )
 
-st.divider()
+st.markdown(
+    '<div class="sub-title">'
+    'Tính lãi đơn và lãi kép theo tháng, quý hoặc cuối kỳ'
+    '</div>',
+    unsafe_allow_html=True
+)
 
 
-# =========================
-# NHẬP THÔNG TIN
-# =========================
-st.subheader("📋 Thông tin tiền gửi")
+# =========================================================
+# NHẬP DỮ LIỆU
+# =========================================================
+st.header("📋 Thông tin khoản tiền gửi")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    so_tien_gui = st.number_input(
+
+    tien_gui = st.number_input(
         "Số tiền gửi (VNĐ)",
         min_value=0.0,
         value=100_000_000.0,
@@ -65,8 +336,9 @@ with col1:
     )
 
 with col2:
+
     loai_lai = st.selectbox(
-        "Hình thức tính lãi",
+        "Phương thức tính lãi",
         [
             "Lãi đơn",
             "Lãi kép"
@@ -83,196 +355,55 @@ with col2:
     )
 
 
-# =========================
-# TÍNH TOÁN
-# =========================
-def tinh_lai(
-    tien_goc,
-    so_thang,
-    lai_suat_nam,
-    loai_lai,
-    hinh_thuc_nhan_lai
-):
-    """
-    Tính tiền lãi tiết kiệm.
+# =========================================================
+# THÔNG TIN QUY ƯỚC
+# =========================================================
+with st.expander("ℹ️ Quy ước tính toán"):
 
-    Quy ước:
-    - Lãi suất nhập vào là %/năm.
-    - Lãi theo tháng = lãi suất năm / 12.
-    - Lãi theo quý = lãi suất năm / 4.
-    - Với lãi đơn: tiền lãi được tính trên tiền gốc ban đầu.
-    - Với lãi kép: tiền lãi được nhập vào gốc sau mỗi kỳ nhận lãi.
-    """
-
-    lai_suat_nam = lai_suat_nam / 100
-
-    # Xác định số tháng của một kỳ nhận lãi
-    if hinh_thuc_nhan_lai == "Lãnh lãi theo tháng":
-        thang_moi_ky = 1
-    elif hinh_thuc_nhan_lai == "Lãnh lãi theo quý":
-        thang_moi_ky = 3
-    else:
-        thang_moi_ky = so_thang
-
-    # =========================
-    # TRƯỜNG HỢP LÃNH CUỐI KỲ
-    # =========================
-    if hinh_thuc_nhan_lai == "Lãnh lãi cuối kỳ":
-
-        if loai_lai == "Lãi đơn":
-            tong_lai = tien_goc * lai_suat_nam * so_thang / 12
-            tong_tien = tien_goc + tong_lai
-
-        else:
-            # Lãi kép: ghép lãi theo tháng
-            lai_thang = lai_suat_nam / 12
-            tong_tien = tien_goc * ((1 + lai_thang) ** so_thang)
-            tong_lai = tong_tien - tien_goc
-
-        return {
-            "lai_dinh_ky": tong_lai,
-            "tong_lai": tong_lai,
-            "tong_tien": tong_tien,
-            "chi_tiet": [
-                {
-                    "Kỳ": "Cuối kỳ",
-                    "Số tháng": so_thang,
-                    "Tiền gốc": tien_goc,
-                    "Tiền lãi": tong_lai,
-                    "Tổng tiền": tong_tien
-                }
-            ]
-        }
-
-    # =========================
-    # LÃNH LÃI THEO THÁNG / QUÝ
-    # =========================
-
-    # Số kỳ nhận lãi
-    so_ky = so_thang // thang_moi_ky
-
-    # Nếu kỳ hạn không chia hết cho kỳ nhận lãi,
-    # phần tháng lẻ sẽ được xử lý ở cuối.
-    thang_con_lai = so_thang % thang_moi_ky
-
-    chi_tiet = []
-
-    tong_lai = 0
-    tien_hien_tai = tien_goc
-
-    # Lãi suất cho một kỳ
-    lai_suat_ky = lai_suat_nam * thang_moi_ky / 12
-
-    for ky in range(1, so_ky + 1):
-
-        if loai_lai == "Lãi đơn":
-            # Lãi luôn tính trên tiền gốc ban đầu
-            tien_lai = tien_goc * lai_suat_ky
-
-            # Với lãi đơn, tiền lãi được trả ra ngoài,
-            # không cộng vào gốc.
-            tien_cuoi_ky = tien_goc + tien_lai
-
-        else:
-            # Lãi kép
-            tien_lai = tien_hien_tai * lai_suat_ky
-
-            # Lãi nhập vào gốc
-            tien_hien_tai += tien_lai
-
-            tien_cuoi_ky = tien_hien_tai
-
-        tong_lai += tien_lai
-
-        chi_tiet.append(
-            {
-                "Kỳ": ky,
-                "Số tháng": ky * thang_moi_ky,
-                "Tiền gốc": tien_goc if loai_lai == "Lãi đơn" else tien_hien_tai - tien_lai,
-                "Tiền lãi": tien_lai,
-                "Tổng tiền": tien_cuoi_ky
-            }
-        )
-
-    # =========================
-    # XỬ LÝ THÁNG LẺ
-    # =========================
-    if thang_con_lai > 0:
-
-        lai_suat_le = lai_suat_nam * thang_con_lai / 12
-
-        if loai_lai == "Lãi đơn":
-            tien_lai_le = tien_goc * lai_suat_le
-            tien_cuoi_ky = tien_goc + tien_lai_le
-        else:
-            tien_lai_le = tien_hien_tai * lai_suat_le
-            tien_hien_tai += tien_lai_le
-            tien_cuoi_ky = tien_hien_tai
-
-        tong_lai += tien_lai_le
-
-        chi_tiet.append(
-            {
-                "Kỳ": f"{so_ky + 1} (lẻ)",
-                "Số tháng": so_thang,
-                "Tiền gốc": (
-                    tien_goc
-                    if loai_lai == "Lãi đơn"
-                    else tien_hien_tai - tien_lai_le
-                ),
-                "Tiền lãi": tien_lai_le,
-                "Tổng tiền": tien_cuoi_ky
-            }
-        )
-
-    # =========================
-    # KẾT QUẢ CUỐI
-    # =========================
-    if loai_lai == "Lãi đơn":
-        tong_tien = tien_goc + tong_lai
-    else:
-        tong_tien = tien_hien_tai
-
-    # Tiền lãi định kỳ
-    if so_ky > 0:
-        lai_dinh_ky = (
-            tong_lai / so_ky
-            if thang_con_lai == 0
-            else tong_lai / len(chi_tiet)
-        )
-    else:
-        lai_dinh_ky = tong_lai
-
-    return {
-        "lai_dinh_ky": lai_dinh_ky,
-        "tong_lai": tong_lai,
-        "tong_tien": tong_tien,
-        "chi_tiet": chi_tiet
-    }
+    st.write(
+        """
+        - Lãi suất được nhập theo **%/năm**.
+        - **Lãi đơn:** tiền lãi luôn tính trên số tiền gốc ban đầu.
+        - **Lãi kép:** tiền lãi được cộng vào vốn sau mỗi kỳ tính lãi.
+        - Lãnh lãi tháng: 1 kỳ = 1 tháng.
+        - Lãnh lãi quý: 1 kỳ = 3 tháng.
+        - Lãnh lãi cuối kỳ: toàn bộ tiền lãi được tính đến ngày đáo hạn.
+        """
+    )
 
 
-# =========================
-# NÚT TÍNH TOÁN
-# =========================
+# =========================================================
+# NÚT TÍNH
+# =========================================================
 st.divider()
 
-if st.button(
+tinh_button = st.button(
     "🧮 TÍNH TIỀN LÃI",
     type="primary",
     use_container_width=True
-):
+)
 
-    if so_tien_gui <= 0:
-        st.error("Vui lòng nhập số tiền gửi lớn hơn 0.")
+
+# =========================================================
+# XỬ LÝ KẾT QUẢ
+# =========================================================
+if tinh_button:
+
+    if tien_gui <= 0:
+        st.error("❌ Số tiền gửi phải lớn hơn 0.")
+        st.stop()
+
+    if ky_han <= 0:
+        st.error("❌ Kỳ hạn phải lớn hơn 0.")
         st.stop()
 
     if lai_suat < 0:
-        st.error("Lãi suất không được nhỏ hơn 0.")
+        st.error("❌ Lãi suất không được âm.")
         st.stop()
 
     ket_qua = tinh_lai(
-        tien_goc=so_tien_gui,
-        so_thang=ky_han,
+        tien_gui=tien_gui,
+        ky_han_thang=ky_han,
         lai_suat_nam=lai_suat,
         loai_lai=loai_lai,
         hinh_thuc_nhan_lai=hinh_thuc_nhan_lai
@@ -281,79 +412,81 @@ if st.button(
     lai_dinh_ky = ket_qua["lai_dinh_ky"]
     tong_lai = ket_qua["tong_lai"]
     tong_tien = ket_qua["tong_tien"]
+    bang_chi_tiet = ket_qua["bang_chi_tiet"]
 
 
-    # =========================
-    # HIỂN THỊ KẾT QUẢ
-    # =========================
-    st.subheader("📊 Kết quả tính toán")
+    # =====================================================
+    # KẾT QUẢ CHÍNH
+    # =====================================================
+    st.header("📊 Kết quả")
 
-    col1, col2, col3 = st.columns(3)
+    c1, c2, c3 = st.columns(3)
 
-    with col1:
+    with c1:
         st.metric(
             "💵 Tiền lãi định kỳ",
             format_money(lai_dinh_ky)
         )
 
-    with col2:
+    with c2:
         st.metric(
             "📈 Tổng tiền lãi",
             format_money(tong_lai)
         )
 
-    with col3:
+    with c3:
         st.metric(
             "💰 Tổng gốc + lãi",
             format_money(tong_tien)
         )
 
 
-    # =========================
-    # THÔNG TIN TÓM TẮT
-    # =========================
-    st.divider()
-
+    # =====================================================
+    # THÔNG TIN KHOẢN GỬI
+    # =====================================================
     st.subheader("📝 Thông tin khoản gửi")
 
-    thong_tin = {
-        "Số tiền gửi": format_money(so_tien_gui),
-        "Kỳ hạn": f"{ky_han} tháng",
-        "Lãi suất": f"{lai_suat:.2f}%/năm",
-        "Hình thức tính": loai_lai,
-        "Hình thức nhận lãi": hinh_thuc_nhan_lai
-    }
+    thong_tin = pd.DataFrame({
+        "Thông tin": [
+            "Số tiền gửi",
+            "Kỳ hạn",
+            "Lãi suất",
+            "Phương thức tính lãi",
+            "Hình thức nhận lãi"
+        ],
+        "Giá trị": [
+            format_money(tien_gui),
+            f"{ky_han} tháng",
+            f"{lai_suat:.2f}%/năm",
+            loai_lai,
+            hinh_thuc_nhan_lai
+        ]
+    })
 
-    for key, value in thong_tin.items():
-        col1, col2 = st.columns([1, 2])
-
-        with col1:
-            st.write(f"**{key}**")
-
-        with col2:
-            st.write(value)
+    st.table(thong_tin)
 
 
-    # =========================
-    # BẢNG CHI TIẾT
-    # =========================
-    st.divider()
+    # =====================================================
+    # CHI TIẾT TỪNG KỲ
+    # =====================================================
+    st.subheader("📋 Chi tiết tiền lãi từng kỳ")
 
-    st.subheader("📋 Chi tiết tiền lãi")
+    bang_hien_thi = bang_chi_tiet.copy()
 
-    # Tạo dữ liệu hiển thị đẹp hơn
-    bang_hien_thi = []
+    bang_hien_thi["Tiền gốc đầu kỳ"] = (
+        bang_hien_thi["Tiền gốc đầu kỳ"]
+        .apply(format_money)
+    )
 
-    for item in ket_qua["chi_tiet"]:
-        bang_hien_thi.append(
-            {
-                "Kỳ": item["Kỳ"],
-                "Số tháng": item["Số tháng"],
-                "Tiền gốc": format_money(item["Tiền gốc"]),
-                "Tiền lãi": format_money(item["Tiền lãi"]),
-                "Tổng tiền": format_money(item["Tổng tiền"])
-            }
-        )
+    bang_hien_thi["Tiền lãi"] = (
+        bang_hien_thi["Tiền lãi"]
+        .apply(format_money)
+    )
+
+    bang_hien_thi["Tiền cuối kỳ"] = (
+        bang_hien_thi["Tiền cuối kỳ"]
+        .apply(format_money)
+    )
 
     st.dataframe(
         bang_hien_thi,
@@ -362,49 +495,54 @@ if st.button(
     )
 
 
-    # =========================
-    # GIẢI THÍCH
-    # =========================
-    with st.expander("ℹ️ Xem cách tính"):
+    # =====================================================
+    # CÔNG THỨC
+    # =====================================================
+    with st.expander("📐 Xem công thức tính"):
 
         if loai_lai == "Lãi đơn":
-            st.write(
-                "### Lãi đơn"
-            )
+
+            st.markdown("### Lãi đơn")
 
             st.latex(
-                r"Lãi = Tiền\ gốc \times Lãi\ suất\ năm \times "
-                r"\frac{Số\ tháng}{12}"
+                r"""
+                Lãi = Tiền\ gốc \times Lãi\ suất\ năm
+                \times \frac{Số\ tháng}{12}
+                """
             )
 
             st.write(
-                "Với lãi đơn, tiền lãi của mỗi kỳ được tính dựa trên "
-                "số tiền gốc ban đầu. Tiền lãi không được nhập vào gốc."
+                "Tiền lãi không được cộng vào vốn để tạo ra lãi ở kỳ sau."
             )
 
         else:
-            st.write(
-                "### Lãi kép"
-            )
+
+            st.markdown("### Lãi kép")
 
             st.latex(
-                r"Tổng\ tiền = Tiền\ gốc \times (1 + r)^n"
+                r"""
+                A = P(1+r)^n
+                """
             )
 
             st.write(
-                "Với lãi kép, tiền lãi sau mỗi kỳ được cộng vào tiền gốc "
-                "và tiếp tục được dùng để tính lãi cho kỳ tiếp theo."
+                """
+                Trong đó:
+                - P: số tiền gốc ban đầu
+                - r: lãi suất của một kỳ
+                - n: số kỳ tính lãi
+                - A: tổng tiền gốc và lãi
+                """
             )
 
 
-# =========================
+# =========================================================
 # FOOTER
-# =========================
+# =========================================================
 st.divider()
 
 st.caption(
-    "💡 Công cụ mang tính chất tham khảo. "
-    "Lãi thực tế của ngân hàng có thể phụ thuộc vào quy định, "
-    "phương pháp tính lãi và điều kiện của từng sản phẩm tiền gửi."
+    "💡 Công cụ mang tính tham khảo. "
+    "Lãi suất và phương pháp tính thực tế có thể khác tùy ngân hàng "
+    "và sản phẩm tiền gửi."
 )
-```
